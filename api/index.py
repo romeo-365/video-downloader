@@ -18,20 +18,26 @@ def get_links():
         formats_list = []
         
         if platform == 'tiktok':
-            # TikTok extraction via TikWM API
+            # TikTok extraction via TikWM API (Including HD & Watermark-free)
             api_url = f"https://tikwm.com/api/?url={urllib.parse.quote(url)}"
             req = urllib.request.Request(api_url, headers={'User-Agent': 'Mozilla/5.0'})
             with urllib.request.urlopen(req) as response:
                 res_data = json.loads(response.read().decode())
-                vid_url = res_data.get('data', {}).get('play')
-                music_url = res_data.get('data', {}).get('music')
-                if vid_url:
-                    formats_list.append({'label': 'Download No Watermark (HD)', 'url': vid_url})
+                video_data = res_data.get('data', {})
+                
+                hd_url = video_data.get('hdplay')
+                normal_url = video_data.get('play')
+                music_url = video_data.get('music')
+
+                # Priority to HD video link if available
+                if hd_url:
+                    formats_list.append({'label': 'Download HD No Watermark (Highest)', 'url': hd_url})
+                if normal_url:
+                    formats_list.append({'label': 'Download No Watermark (Standard)', 'url': normal_url})
                 if music_url:
                     formats_list.append({'label': 'Download Audio (MP3)', 'url': music_url})
 
         elif platform == 'youtube':
-            # YouTube extraction via Cobalt / public robust proxy or API
             yt_api = f"https://apis.davidcyriltech.my.id/download?url={urllib.parse.quote(url)}"
             req = urllib.request.Request(yt_api, headers={'User-Agent': 'Mozilla/5.0'})
             with urllib.request.urlopen(req) as response:
@@ -39,9 +45,6 @@ def get_links():
                 download_url = res_data.get('download_url') or res_data.get('result') or res_data.get('video', {}).get('url')
                 if download_url:
                     formats_list.append({'label': 'Download YouTube Video (HD)', 'url': download_url})
-                else:
-                    # Fallback generic stream search if API fails
-                    formats_list.append({'label': 'Download Video Stream', 'url': url})
 
         elif platform == 'instagram':
             insta_api = f"https://apis.davidcyriltech.my.id/download?url={urllib.parse.quote(url)}"
