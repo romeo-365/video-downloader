@@ -319,12 +319,12 @@
 
                 results.style.display = 'block';
                 data.formats.forEach(fmt => {
-                    const btn = document.createElement('button');
+                    const btn = document.createElement('a');
                     btn.className = 'quality-btn';
                     btn.innerHTML = `<span>${fmt.label}</span> <i class="fas fa-download"></i>`;
-                    btn.onclick = () => {
-                        window.open(fmt.url, '_blank');
-                    };
+                    btn.href = fmt.url;
+                    btn.setAttribute('download', 'video.mp4');
+                    btn.target = '_blank';
                     optionsContainer.appendChild(btn);
                 });
 
