@@ -12,10 +12,17 @@ def get_links():
     if not url:
         return jsonify({'error': 'URL is required'}), 400
 
+    # Enhanced options with User-Agent to bypass 403 blocks
     ydl_opts = {
         'format': 'best',
         'quiet': True,
         'no_warnings': True,
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-us,en;q=0.5',
+            'Sec-Fetch-Mode': 'navigate',
+        }
     }
 
     try:
