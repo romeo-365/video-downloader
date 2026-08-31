@@ -3,6 +3,7 @@ import urllib.request
 import urllib.parse
 import json
 import re
+import yt_dlp
 
 app = Flask(__name__)
 
@@ -30,13 +31,12 @@ def get_links():
                 
                 with urllib.request.urlopen(req_session, timeout=10) as resp:
                     html_content = resp.read().decode('utf-8')
-                    # Find the token variable 'tt'
                     tt_match = re.findall(r"tt:\'([\w\d]+)\'", html_content)
                     
                     if tt_match:
                         tt_token = tt_match[0]
                         
-                        # Step 2: Post the TikTok URL along with the extracted token to SSSTik backend endpoint
+                        # Step 2: Post the TikTok URL along with the extracted token
                         form_data = urllib.parse.urlencode({
                             'id': url,
                             'locale': 'en',
@@ -59,7 +59,7 @@ def get_links():
                         with urllib.request.urlopen(req_abc, timeout=10) as abc_resp:
                             result_html = abc_resp.read().decode('utf-8')
                             
-                            # Step 3: Extract download links from the returned HTML snippet
+                            # Step 3: Extract download links
                             links = re.findall(r'href="(https://[^"]+)"', result_html)
                             for link in links:
                                 if 'download' in link or '.mp4' in link or 'ssstik' in link:
@@ -72,7 +72,7 @@ def get_links():
             except Exception as e:
                 pass
 
-            # Fallback to TikWM if SSSTik scraper gets rate-limited
+            # Fallback to TikWM if SSSTik fails
             if not formats_list:
                 try:
                     fallback_url = f"https://tikwm.com/api/?url={urllib.parse.quote(url)}&hd=1"
@@ -87,22 +87,34 @@ def get_links():
                     pass
 
         elif platform == 'youtube':
-            yt_api = f"https://apis.davidcyriltech.my.id/download?url={urllib.parse.quote(url)}"
-            req = urllib.request.Request(yt_api, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req) as response:
-                res_data = json.loads(response.read().decode())
-                download_url = res_data.get('download_url') or res_data.get('result') or res_data.get('video', {}).get('url')
-                if download_url:
-                    formats_list.append({'label': 'Download YouTube Video (HD)', 'url': download_url})
+            try:
+                ydl_opts = {
+                    'format': 'best',
+                    'quiet': True,
+                    'no_warnings': True,
+                }
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+                    download_url = info.get('url')
+                    if download_url:
+                        formats_list.append({'label': 'Download YouTube Video (HD)', 'url': download_url})
+            except Exception as e:
+                pass
 
         elif platform == 'instagram':
-            insta_api = f"https://apis.davidcyriltech.my.id/download?url={urllib.parse.quote(url)}"
-            req = urllib.request.Request(insta_api, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req) as response:
-                res_data = json.loads(response.read().decode())
-                download_url = res_data.get('download_url') or res_data.get('result')
-                if download_url:
-                    formats_list.append({'label': 'Download Instagram Video', 'url': download_url})
+            try:
+                ydl_opts = {
+                    'format': 'best',
+                    'quiet': True,
+                    'no_warnings': True,
+                }
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+                    download_url = info.get('url')
+                    if download_url:
+                        formats_list.append({'label': 'Download Instagram Video', 'url': download_url})
+            except Exception as e:
+                pass
 
         if not formats_list:
             return jsonify({'error': 'Could not extract HD stream. Try another link.'}), 400
@@ -119,3 +131,6 @@ def get_links():
 
     except Exception as e:
         return jsonify({'error': 'Server error processing link.'}), 500
+
+if __name__ == '__main__':
+    app.run(debug=True)
