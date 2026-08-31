@@ -1,6 +1,5 @@
 from flask import Flask, request, jsonify
-import urllib.request
-import json
+import yt_dlp
 
 app = Flask(__name__)
 
@@ -13,37 +12,54 @@ def get_links():
     if not url:
         return jsonify({'error': 'URL is required'}), 400
 
+    # yt-dlp options configured to bypass blocks and 403 errors
+    ydl_opts = {
+        'format': 'best',
+        'quiet': True,
+        'no_warnings': True,
+        'extractor_args': {'tiktok': {'webpage_download': True}},
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Sec-Fetch-Mode': 'navigate',
+        }
+    }
+
     try:
-        # Using a reliable public API endpoint that extracts direct video streams
-        api_url = f"https://tikwm.com/api/?url={url}" if platform == 'tiktok' else f"https://apis.davidcyriltech.my.id/download?url={url}"
-        
-        req = urllib.request.Request(
-            api_url, 
-            headers={'User-Agent': 'Mozilla/5.0'}
-        )
-        
-        with urllib.request.urlopen(req) as response:
-            res_data = json.loads(response.read().decode())
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
             
             formats_list = []
             
-            if platform == 'tiktok':
-                # TikWM api structure for direct mp4 video
-                video_dl = res_data.get('data', {}).get('play', '')
-                music_dl = res_data.get('data', {}).get('music', '')
-                
-                if video_dl:
-                    formats_list.append({'label': 'Download No Watermark (HD)', 'url': video_dl})
-                if music_dl:
-                    formats_list.append({'label': 'Download Audio (MP3)', 'url': music_dl})
-            else:
-                download_url = res_data.get('download_url', res_data.get('result', url))
-                formats_list.append({'label': 'Download Video File', 'url': download_url})
+            # Extract direct stream URL
+            video_url = info.get('url')
+            if not video_url and 'entries' in info:
+                # Handle playlists or multi-item posts
+                video_url = info['entries'][0].get('url')
 
-            if not formats_list:
-                formats_list.append({'label': 'Download Media', 'url': url})
+            if not video_url:
+                return jsonify({'error': 'Could not extract video stream. Try another link.'}), 400
+
+            if platform == 'tiktok':
+                formats_list = [
+                    {'label': 'Download No Watermark (HD)', 'url': video_url},
+                    {'label': 'Download MP3 Audio', 'url': info.get('acodec') and video_url or video_url}
+                ]
+            elif platform == 'instagram':
+                formats_list = [
+                    {'label': 'Download HD Video', 'url': video_url}
+                ]
+            else: # YouTube
+                formats_list = [
+                    {'label': 'Download Video (HD)', 'url': video_url}
+                ]
 
             return jsonify({'formats': formats_list})
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        # Return friendly error message without crashing
+        err_msg = str(e)
+        if '403' in err_msg:
+            err_msg = "Platform blocked the request (403). Please try again or use another link."
+        return jsonify({'error': err_msg}), 500
