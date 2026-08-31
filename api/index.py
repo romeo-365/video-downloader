@@ -18,12 +18,11 @@ def get_links():
         formats_list = []
         
         if platform == 'tiktok':
-            # Cobalt engine request with extended timeout
+            # Method 1: Cobalt Engine (Bypasses TikTok token restrictions like SSSTik)
             try:
                 payload = json.dumps({
                     "url": url,
                     "vQuality": "max",
-                    "dubLang": False,
                     "disableMetadata": True
                 }).encode('utf-8')
                 
@@ -33,36 +32,34 @@ def get_links():
                     headers={
                         'Content-Type': 'application/json',
                         'Accept': 'application/json',
-                        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15'
+                        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X)'
                     }
                 )
                 
-                with urllib.request.urlopen(req, timeout=15) as resp:
+                with urllib.request.urlopen(req, timeout=12) as resp:
                     res_data = json.loads(resp.read().decode())
                     status = res_data.get('status')
                     
-                    if status == 'stream':
+                    if status in ['stream', 'redirect'] and res_data.get('url'):
                         formats_list.append({'label': 'Download True HD (100% Original)', 'url': res_data.get('url')})
                     elif status == 'picker':
                         for item in res_data.get('picker', []):
                             if item.get('type') == 'video':
                                 formats_list.append({'label': 'Download True HD (100% Original)', 'url': item.get('url')})
-                    elif status == 'redirect':
-                        formats_list.append({'label': 'Download True HD (100% Original)', 'url': res_data.get('url')})
-            except Exception as e:
+            except:
                 pass
 
-            # Fallback to absolute direct stream if Cobalt fails
+            # Method 2: Fallback to TikWM HD stream if Cobalt fails
             if not formats_list:
                 try:
-                    alt_api = f"https://tikwm.com/api/?url={urllib.parse.quote(url)}&hd=1"
-                    req_alt = urllib.request.Request(alt_api, headers={'User-Agent': 'Mozilla/5.0'})
+                    api_url = f"https://tikwm.com/api/?url={urllib.parse.quote(url)}&hd=1"
+                    req_alt = urllib.request.Request(api_url, headers={'User-Agent': 'Mozilla/5.0'})
                     with urllib.request.urlopen(req_alt, timeout=8) as resp_alt:
                         alt_json = json.loads(resp_alt.read().decode())
                         v_data = alt_json.get('data', {})
-                        hd = v_data.get('hdplay') or v_data.get('play')
-                        if hd:
-                            formats_list.append({'label': 'Download HD Video', 'url': hd})
+                        hd_link = v_data.get('hdplay')
+                        if hd_link:
+                            formats_list.append({'label': 'Download True HD (Original)', 'url': hd_link})
                 except:
                     pass
 
@@ -85,7 +82,7 @@ def get_links():
                     formats_list.append({'label': 'Download Instagram Video', 'url': download_url})
 
         if not formats_list:
-            return jsonify({'error': 'Failed to fetch HD stream. Please try a different link.'}), 400
+            return jsonify({'error': 'HD link could not be generated. Please try again.'}), 400
 
         return jsonify({'formats': formats_list})
 
