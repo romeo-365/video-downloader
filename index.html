@@ -183,7 +183,8 @@
             justify-content: space-between;
             align-items: center;
             transition: background 0.2s;
-            text-decoration: none;
+            width: 100%;
+            box-sizing: border-box;
         }
 
         .quality-btn:hover {
@@ -319,12 +320,32 @@
 
                 results.style.display = 'block';
                 data.formats.forEach(fmt => {
-                    const btn = document.createElement('a');
+                    const btn = document.createElement('button');
                     btn.className = 'quality-btn';
                     btn.innerHTML = `<span>${fmt.label}</span> <i class="fas fa-download"></i>`;
-                    btn.href = fmt.url;
-                    btn.setAttribute('download', 'video.mp4');
-                    btn.target = '_blank';
+                    
+                    // Force direct download using Blob instead of opening new tab/playing
+                    btn.onclick = async () => {
+                        btn.innerHTML = `<span>Downloading...</span> <i class="fas fa-spinner fa-spin"></i>`;
+                        try {
+                            const res = await fetch(fmt.url);
+                            const blob = await res.blob();
+                            const blobUrl = window.URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = blobUrl;
+                            a.download = fmt.label.includes('Audio') ? 'audio.mp3' : 'video.mp4';
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                            window.URL.revokeObjectURL(blobUrl);
+                            btn.innerHTML = `<span>${fmt.label}</span> <i class="fas fa-download"></i>`;
+                        } catch (e) {
+                            // Fallback if CORS blocks blob download
+                            window.open(fmt.url, '_blank');
+                            btn.innerHTML = `<span>${fmt.label}</span> <i class="fas fa-download"></i>`;
+                        }
+                    };
+
                     optionsContainer.appendChild(btn);
                 });
 
