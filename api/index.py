@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 import urllib.request
 import json
+import urllib.parse
 
 app = Flask(__name__)
 
@@ -17,31 +18,41 @@ def get_links():
         formats_list = []
         
         if platform == 'tiktok':
-            # Jugaar: Using Cobalt public instance engine which acts like SSSTik and bypasses token restrictions
+            # Cobalt engine request with extended timeout
             try:
-                payload = json.dumps({"url": url, "vQuality": "max"}).encode('utf-8')
+                payload = json.dumps({
+                    "url": url,
+                    "vQuality": "max",
+                    "dubLang": False,
+                    "disableMetadata": True
+                }).encode('utf-8')
+                
                 req = urllib.request.Request(
                     "https://co.wuk.sh/api/json",
                     data=payload,
                     headers={
                         'Content-Type': 'application/json',
                         'Accept': 'application/json',
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15'
                     }
                 )
-                with urllib.request.urlopen(req, timeout=12) as resp:
+                
+                with urllib.request.urlopen(req, timeout=15) as resp:
                     res_data = json.loads(resp.read().decode())
+                    status = res_data.get('status')
                     
-                    if res_data.get('status') == 'stream':
+                    if status == 'stream':
                         formats_list.append({'label': 'Download True HD (100% Original)', 'url': res_data.get('url')})
-                    elif res_data.get('status') == 'picker':
+                    elif status == 'picker':
                         for item in res_data.get('picker', []):
                             if item.get('type') == 'video':
                                 formats_list.append({'label': 'Download True HD (100% Original)', 'url': item.get('url')})
+                    elif status == 'redirect':
+                        formats_list.append({'label': 'Download True HD (100% Original)', 'url': res_data.get('url')})
             except Exception as e:
                 pass
 
-            # Backup Jugaar if Cobalt is busy
+            # Fallback to absolute direct stream if Cobalt fails
             if not formats_list:
                 try:
                     alt_api = f"https://tikwm.com/api/?url={urllib.parse.quote(url)}&hd=1"
@@ -74,7 +85,7 @@ def get_links():
                     formats_list.append({'label': 'Download Instagram Video', 'url': download_url})
 
         if not formats_list:
-            return jsonify({'error': 'Could not extract HD link. Try again.'}), 400
+            return jsonify({'error': 'Failed to fetch HD stream. Please try a different link.'}), 400
 
         return jsonify({'formats': formats_list})
 
