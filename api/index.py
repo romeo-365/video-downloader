@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 import urllib.request
 import json
-import re
+import urllib.parse
 
 app = Flask(__name__)
 
@@ -18,51 +18,44 @@ def get_links():
         formats_list = []
         
         if platform == 'tiktok':
-            # Resolve short URLs if needed (e.g. vt.tiktok.com)
-            if 'vt.tiktok.com' in url or 'vm.tiktok.com' in url:
-                req_short = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                try:
-                    with urllib.request.urlopen(req_short) as resp:
-                        url = resp.url
-                except:
-                    pass
+            # TikTok extraction via TikWM API
+            api_url = f"https://tikwm.com/api/?url={urllib.parse.quote(url)}"
+            req = urllib.request.Request(api_url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req) as response:
+                res_data = json.loads(response.read().decode())
+                vid_url = res_data.get('data', {}).get('play')
+                music_url = res_data.get('data', {}).get('music')
+                if vid_url:
+                    formats_list.append({'label': 'Download No Watermark (HD)', 'url': vid_url})
+                if music_url:
+                    formats_list.append({'label': 'Download Audio (MP3)', 'url': music_url})
 
-            # Fetch video ID using regex
-            video_id_match = re.search(r'/video/(\d+)', url)
-            if not video_id_match:
-                # Try fallback API method for tiktok
-                api_fallback = f"https://tikwm.com/api/?url={urllib.parse.quote(url)}"
-                req_fb = urllib.request.Request(api_fallback, headers={'User-Agent': 'Mozilla/5.0'})
-                with urllib.request.urlopen(req_fb) as response:
-                    res_data = json.loads(response.read().decode())
-                    vid_url = res_data.get('data', {}).get('play')
-                    music_url = res_data.get('data', {}).get('music')
-                    if vid_url:
-                        formats_list.append({'label': 'Download No Watermark (HD)', 'url': vid_url})
-                    if music_url:
-                        formats_list.append({'label': 'Download Audio (MP3)', 'url': music_url})
-            
-            if not formats_list:
-                # Direct TikWM query
-                api_url = f"https://tikwm.com/api/?url={urllib.parse.quote(url)}"
-                req = urllib.request.Request(api_url, headers={'User-Agent': 'Mozilla/5.0'})
-                with urllib.request.urlopen(req) as response:
-                    res_data = json.loads(response.read().decode())
-                    vid_url = res_data.get('data', {}).get('play')
-                    music_url = res_data.get('data', {}).get('music')
-                    if vid_url:
-                        formats_list.append({'label': 'Download No Watermark (HD)', 'url': vid_url})
-                    if music_url:
-                        formats_list.append({'label': 'Download Audio (MP3)', 'url': music_url})
+        elif platform == 'youtube':
+            # YouTube extraction via Cobalt / public robust proxy or API
+            yt_api = f"https://apis.davidcyriltech.my.id/download?url={urllib.parse.quote(url)}"
+            req = urllib.request.Request(yt_api, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req) as response:
+                res_data = json.loads(response.read().decode())
+                download_url = res_data.get('download_url') or res_data.get('result') or res_data.get('video', {}).get('url')
+                if download_url:
+                    formats_list.append({'label': 'Download YouTube Video (HD)', 'url': download_url})
+                else:
+                    # Fallback generic stream search if API fails
+                    formats_list.append({'label': 'Download Video Stream', 'url': url})
 
-        else:
-            # General fallback for other platforms
-            formats_list.append({'label': 'Download Media File', 'url': url})
+        elif platform == 'instagram':
+            insta_api = f"https://apis.davidcyriltech.my.id/download?url={urllib.parse.quote(url)}"
+            req = urllib.request.Request(insta_api, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req) as response:
+                res_data = json.loads(response.read().decode())
+                download_url = res_data.get('download_url') or res_data.get('result')
+                if download_url:
+                    formats_list.append({'label': 'Download Instagram Video', 'url': download_url})
 
         if not formats_list:
-            return jsonify({'error': 'Could not fetch video. Please check the link.'}), 400
+            return jsonify({'error': 'Could not extract direct links for this media. Please try another link.'}), 400
 
         return jsonify({'formats': formats_list})
 
     except Exception as e:
-        return jsonify({'error': 'Failed to process link. Please try again.'}), 500
+        return jsonify({'error': 'Failed to process link. Please check the URL.'}), 500
