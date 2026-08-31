@@ -1,7 +1,8 @@
 from flask import Flask, request, jsonify
 import urllib.request
-import json
 import urllib.parse
+import json
+import re
 
 app = Flask(__name__)
 
@@ -18,45 +19,72 @@ def get_links():
         formats_list = []
         
         if platform == 'tiktok':
-            if 'vt.tiktok.com' in url or 'vm.tiktok.com' in url:
-                try:
-                    req_s = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X)'})
-                    with urllib.request.urlopen(req_s, timeout=5) as resp_s:
-                        url = resp_s.url
-                except:
-                    pass
-
-            # Using TikWM with full mobile client emulation headers to prevent blocking
-            api_url = f"https://tikwm.com/api/?url={urllib.parse.quote(url)}&hd=1"
-            req = urllib.request.Request(
-                api_url, 
-                headers={
-                    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
-                    'Accept': 'application/json, text/javascript, */*; q=0.01',
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'Referer': 'https://tikwm.com/'
-                }
-            )
-            
             try:
-                with urllib.request.urlopen(req, timeout=10) as response:
-                    res_json = json.loads(response.read().decode())
-                    v_data = res_json.get('data', {})
+                # Step 1: Hit ssstik.io to extract session token ('tt')
+                req_session = urllib.request.Request(
+                    "https://ssstik.io/en",
+                    headers={
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                    }
+                )
+                
+                with urllib.request.urlopen(req_session, timeout=10) as resp:
+                    html_content = resp.read().decode('utf-8')
+                    # Find the token variable 'tt'
+                    tt_match = re.findall(r"tt:\'([\w\d]+)\'", html_content)
                     
-                    hd_link = v_data.get('hdplay')
-                    play_link = v_data.get('play')
-                    audio_link = v_data.get('music')
-                    
-                    if hd_link:
-                        formats_list.append({'label': 'Download True HD (100% Original)', 'url': hd_link})
-                    elif play_link:
-                        # Fallback if HD is restricted for this specific link
-                        formats_list.append({'label': 'Download Video (Standard)', 'url': play_link})
+                    if tt_match:
+                        tt_token = tt_match[0]
                         
-                    if audio_link:
-                        formats_list.append({'label': 'Download Audio (MP3)', 'url': audio_link})
+                        # Step 2: Post the TikTok URL along with the extracted token to SSSTik backend endpoint
+                        form_data = urllib.parse.urlencode({
+                            'id': url,
+                            'locale': 'en',
+                            'tt': tt_token
+                        }).encode('utf-8')
+                        
+                        req_abc = urllib.request.Request(
+                            "https://ssstik.io/abc?url=dl",
+                            data=form_data,
+                            headers={
+                                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                                'HX-Request': 'true',
+                                'HX-Current-URL': 'https://ssstik.io/en',
+                                'Origin': 'https://ssstik.io',
+                                'Referer': 'https://ssstik.io/en'
+                            }
+                        )
+                        
+                        with urllib.request.urlopen(req_abc, timeout=10) as abc_resp:
+                            result_html = abc_resp.read().decode('utf-8')
+                            
+                            # Step 3: Extract download links from the returned HTML snippet
+                            links = re.findall(r'href="(https://[^"]+)"', result_html)
+                            for link in links:
+                                if 'download' in link or '.mp4' in link or 'ssstik' in link:
+                                    if 'dl.ssstik.io' in link or 'tikwm' in link or 'download' in link:
+                                        formats_list.append({
+                                            'label': 'Download True HD (SSSTik Engine)',
+                                            'url': link
+                                        })
+                                        break
             except Exception as e:
                 pass
+
+            # Fallback to TikWM if SSSTik scraper gets rate-limited
+            if not formats_list:
+                try:
+                    fallback_url = f"https://tikwm.com/api/?url={urllib.parse.quote(url)}&hd=1"
+                    req_alt = urllib.request.Request(fallback_url, headers={'User-Agent': 'Mozilla/5.0'})
+                    with urllib.request.urlopen(req_alt, timeout=8) as resp_alt:
+                        alt_json = json.loads(resp_alt.read().decode())
+                        v_data = alt_json.get('data', {})
+                        hd = v_data.get('hdplay') or v_data.get('play')
+                        if hd:
+                            formats_list.append({'label': 'Download HD Video', 'url': hd})
+                except:
+                    pass
 
         elif platform == 'youtube':
             yt_api = f"https://apis.davidcyriltech.my.id/download?url={urllib.parse.quote(url)}"
@@ -77,9 +105,17 @@ def get_links():
                     formats_list.append({'label': 'Download Instagram Video', 'url': download_url})
 
         if not formats_list:
-            return jsonify({'error': 'Could not fetch video links. Please try another link.'}), 400
+            return jsonify({'error': 'Could not extract HD stream. Try another link.'}), 400
 
-        return jsonify({'formats': formats_list})
+        # Remove duplicate URLs if any
+        seen = set()
+        unique_formats = []
+        for fmt in formats_list:
+            if fmt['url'] not in seen:
+                seen.add(fmt['url'])
+                unique_formats.append(fmt)
+
+        return jsonify({'formats': unique_formats})
 
     except Exception as e:
         return jsonify({'error': 'Server error processing link.'}), 500
