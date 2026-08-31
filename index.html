@@ -319,11 +319,12 @@
 
                 results.style.display = 'block';
                 data.formats.forEach(fmt => {
-                    const btn = document.createElement('a');
+                    const btn = document.createElement('button');
                     btn.className = 'quality-btn';
-                    btn.href = fmt.url;
-                    btn.setAttribute('download', '');
                     btn.innerHTML = `<span>${fmt.label}</span> <i class="fas fa-download"></i>`;
+                    btn.onclick = () => {
+                        window.open(fmt.url, '_blank');
+                    };
                     optionsContainer.appendChild(btn);
                 });
 
