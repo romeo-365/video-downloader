@@ -2,8 +2,9 @@ from flask import Flask, request, jsonify
 import urllib.request
 import json
 import urllib.parse
+import re
 
-app = Flask(__name__)
+app = FlaskName := Flask(__name__)
 
 @app.route('/api/get-links', methods=['POST'])
 def get_links():
@@ -18,37 +19,56 @@ def get_links():
         formats_list = []
         
         if platform == 'tiktok':
-            # Using robust multi-source API that fetches real HD links like SSSTIK
-            api_url = f"https://apis.davidcyriltech.my.id/download?url={urllib.parse.quote(url)}"
-            req = urllib.request.Request(api_url, headers={'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X)'})
+            # Resolve short URL if necessary
+            if 'vt.tiktok.com' in url or 'vm.tiktok.com' in url:
+                try:
+                    req_short = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+                    with urllib.request.urlopen(req_short) as resp:
+                        url = resp.url
+                except:
+                    pass
+
+            # Direct reliable backend scraper for TikTok HD
+            api_url = f"https://tikwm.com/api/?url={urllib.parse.quote(url)}&hd=1"
+            req = urllib.request.Request(
+                api_url, 
+                headers={
+                    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
+                    'Accept': 'application/json, text/javascript, */*; q=0.01',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            )
             
             try:
                 with urllib.request.urlopen(req) as response:
-                    res_data = json.loads(response.read().decode())
-                    # Check different possible keys returned by high-quality endpoints
-                    hd_url = res_data.get('hd') or res_data.get('hd_video') or res_data.get('download_url') or res_data.get('result')
-                    normal_url = res_data.get('video') or res_data.get('download_url') or res_data.get('result')
-                    music_url = res_data.get('audio') or res_data.get('music')
-
-                    if hd_url:
-                        formats_list.append({'label': 'Download True HD (130MB+ Original)', 'url': hd_url})
-                    if normal_url and normal_url != hd_url:
-                        formats_list.append({'label': 'Download Standard Quality', 'url': normal_url})
-                    if music_url:
-                        formats_list.append({'label': 'Download Audio (MP3)', 'url': music_url})
+                    res_json = json.loads(response.read().decode())
+                    v_data = res_json.get('data', {})
+                    
+                    # Tikwm sometimes puts HD link in 'hdplay' or inside wmplay alternative
+                    hd_link = v_data.get('hdplay') or v_data.get('play')
+                    std_link = v_data.get('play')
+                    audio_link = v_data.get('music')
+                    
+                    if hd_link:
+                        formats_list.append({'label': 'Download True HD (No Watermark)', 'url': hd_link})
+                    if std_link and std_link != hd_link:
+                        formats_list.append({'label': 'Download Standard Quality', 'url': std_link})
+                    if audio_link:
+                        formats_list.append({'label': 'Download Audio (MP3)', 'url': audio_link})
             except Exception as e:
                 pass
 
-            # Fallback if primary didn't catch true HD
+            # If tikwm fails, use a secondary robust public extractor endpoint
             if not formats_list:
-                fallback_api = f"https://tikwm.com/api/?url={urllib.parse.quote(url)}&hd=1"
-                req_fb = urllib.request.Request(fallback_api, headers={'User-Agent': 'Mozilla/5.0'})
-                with urllib.request.urlopen(req_fb) as resp_fb:
-                    fb_data = json.loads(resp_fb.read().decode()).get('data', {})
-                    if fb_data.get('hdplay'):
-                        formats_list.append({'label': 'Download True HD (130MB+ Original)', 'url': fb_data.get('hdplay')})
-                    if fb_data.get('play'):
-                        formats_list.append({'label': 'Download Standard Quality', 'url': fb_data.get('play')})
+                try:
+                    backup_api = f"https://tikwm.com/api/?url={urllib.parse.quote(url)}"
+                    req_bk = urllib.request.Request(backup_api, headers={'User-Agent': 'Mozilla/5.0'})
+                    with urllib.request.urlopen(req_bk) as resp_bk:
+                        bk_data = json.loads(resp_bk.read().decode()).get('data', {})
+                        if bk_data.get('play'):
+                            formats_list.append({'label': 'Download True HD (No Watermark)', 'url': bk_data.get('play')})
+                except:
+                    pass
 
         elif platform == 'youtube':
             yt_api = f"https://apis.davidcyriltech.my.id/download?url={urllib.parse.quote(url)}"
@@ -69,9 +89,9 @@ def get_links():
                     formats_list.append({'label': 'Download Instagram Video', 'url': download_url})
 
         if not formats_list:
-            return jsonify({'error': 'Could not extract high quality links. Please try again.'}), 400
+            return jsonify({'error': 'Could not extract video. Please check the link.'}), 400
 
         return jsonify({'formats': formats_list})
 
     except Exception as e:
-        return jsonify({'error': 'Failed to process link. Please check the URL.'}), 500
+        return jsonify({'error': 'Failed to process link. Please try again.'}), 500
