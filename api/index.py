@@ -18,41 +18,43 @@ def get_links():
         formats_list = []
         
         if platform == 'tiktok':
-            # Direct API connection to retrieve video streams including HD/Watermark-free
-            api_url = f"https://tikwm.com/api/?url={urllib.parse.quote(url)}&hd=1"
-            req = urllib.request.Request(
-                api_url, 
-                headers={'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15'}
-            )
-            
+            # Primary: Use Cobalt public instance API which extracts full original raw HD streams
             try:
-                with urllib.request.urlopen(req) as response:
-                    res_json = json.loads(response.read().decode())
-                    v_data = res_json.get('data', {})
-                    
-                    hd_link = v_data.get('hdplay') or v_data.get('play')
-                    std_link = v_data.get('play')
-                    audio_link = v_data.get('music')
-                    
-                    if hd_link:
-                        formats_list.append({'label': 'Download True HD (No Watermark)', 'url': hd_link})
-                    if std_link and std_link != hd_link:
-                        formats_list.append({'label': 'Download Standard Quality', 'url': std_link})
-                    if audio_link:
-                        formats_list.append({'label': 'Download Audio (MP3)', 'url': audio_link})
-            except Exception as e:
+                cobalt_payload = json.dumps({"url": url, "vQuality": "max"}).encode('utf-8')
+                req_cobalt = urllib.request.Request(
+                    "https://co.wuk.sh/api/json",
+                    data=cobalt_payload,
+                    headers={
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X)'
+                    }
+                )
+                with urllib.request.urlopen(req_cobalt) as resp_c:
+                    c_data = json.loads(resp_c.read().decode())
+                    if c_data.get('status') == 'stream' or c_data.get('url'):
+                        dl_url = c_data.get('url')
+                        formats_list.append({'label': 'Download True HD (130MB+ Original)', 'url': dl_url})
+                    elif c_data.get('status') == 'picker':
+                        for item in c_data.get('picker', []):
+                            if item.get('type') == 'video':
+                                formats_list.append({'label': 'Download True HD (Original)', 'url': item.get('url')})
+            except:
                 pass
 
-            # Fallback API if primary fails
+            # Fallback to TikWM HD if Cobalt fails
             if not formats_list:
                 try:
-                    backup_api = f"https://apis.davidcyriltech.my.id/download?url={urllib.parse.quote(url)}"
-                    req_bk = urllib.request.Request(backup_api, headers={'User-Agent': 'Mozilla/5.0'})
-                    with urllib.request.urlopen(req_bk) as resp_bk:
-                        bk_data = json.loads(resp_bk.read().decode())
-                        dl_url = bk_data.get('hd') or bk_data.get('download_url') or bk_data.get('result')
-                        if dl_url:
-                            formats_list.append({'label': 'Download True HD (No Watermark)', 'url': dl_url})
+                    api_url = f"https://tikwm.com/api/?url={urllib.parse.quote(url)}&hd=1"
+                    req = urllib.request.Request(api_url, headers={'User-Agent': 'Mozilla/5.0'})
+                    with urllib.request.urlopen(req) as response:
+                        res_json = json.loads(response.read().decode())
+                        v_data = res_json.get('data', {})
+                        hd_link = v_data.get('hdplay') or v_data.get('play')
+                        if hd_link:
+                            formats_list.append({'label': 'Download True HD (No Watermark)', 'url': hd_link})
+                            if v_data.get('music'):
+                                formats_list.append({'label': 'Download Audio (MP3)', 'url': v_data.get('music')})
                 except:
                     pass
 
@@ -75,7 +77,7 @@ def get_links():
                     formats_list.append({'label': 'Download Instagram Video', 'url': download_url})
 
         if not formats_list:
-            return jsonify({'error': 'Could not extract video links. Please check the URL.'}), 400
+            return jsonify({'error': 'Could not extract high quality video. Please try again.'}), 400
 
         return jsonify({'formats': formats_list})
 
